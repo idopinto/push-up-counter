@@ -5,13 +5,25 @@ from datetime import datetime
 import cv2
 import mediapipe as mp
 import numpy as np
+import pygame as pygame
 
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 
-file_name = 'pushups2.mp4'
-cap = cv2.VideoCapture(0)
+file_name = 'Videos/pushups2.mp4'
+# cap = cv2.VideoCapture(0)
+cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) #captureDevice = camera
 
+
+# Initialize Pygame mixer for audio playback
+pygame.mixer.init()
+# Load sound effect files
+rep_sound = pygame.mixer.Sound('Assets/ping.mp3')
+set_sound = pygame.mixer.Sound('Assets/nice_sound.mp3')
+shit_sound = pygame.mixer.Sound('Assets/shit_sound.mp3')
+# end_sound = pygame.mixer.Sound('light_sound.mp3')
+# Start playing the audio
+# pygame.mixer.music.play()
 # Meta.
 fps = int(cap.get(cv2.CAP_PROP_FPS))
 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -20,7 +32,7 @@ frame_size = (width, height)
 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
 # Video writer.
-video_output = cv2.VideoWriter('output.mp4', fourcc, fps, frame_size)
+video_output = cv2.VideoWriter('out/output.mp4', fourcc, fps, frame_size)
 pu_counter = 0
 set_counter = 0
 form = "UP"
@@ -80,6 +92,7 @@ def main():
                         and r_elbow_x <= r_shldr_x and r_shldr_y > r_elbow_y:
                     pu_counter += 1
                     form = "DOWN"
+                    rep_sound.play()
 
                 # Check 'DOWN' mode and that the shoulders
                 # are between and above the elbows so we can prepare for a new rep
@@ -94,6 +107,7 @@ def main():
 
                 # Write informative message when the workout is finished
                 if set_counter == sets:
+                    # end_sound.play()
                     cv2.putText(frame, "Workout Completed! Well Done.", org=(50, 150),
                                 fontFace=cv2.FONT_HERSHEY_TRIPLEX,
                                 fontScale=1,
@@ -105,10 +119,10 @@ def main():
                                 fontFace=cv2.FONT_HERSHEY_TRIPLEX, fontScale=1,
                                 color=(51, 51, 161), thickness=3)
                 else:  # Not finished yet. show how many reps and sets we did so far.
-                    cv2.putText(frame, f"reps: {str(pu_counter)}", org=(50, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    cv2.putText(frame, f"reps: {str(pu_counter)}", org=(10, 50), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                                 fontScale=1,
                                 color=(51, 51, 161), thickness=3)
-                    cv2.putText(frame, f"sets: {str(set_counter)}", org=(50, 100), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    cv2.putText(frame, f"sets: {str(set_counter)}", org=(10, 100), fontFace=cv2.FONT_HERSHEY_SIMPLEX,
                                 fontScale=1,
                                 color=(51, 51, 161), thickness=3)
 
@@ -116,6 +130,7 @@ def main():
                 if pu_counter == reps:
                     pu_counter = 0
                     set_counter += 1
+                    set_sound.play()
                     if set_counter < sets:
                         start_time = datetime.now()
 
@@ -126,10 +141,13 @@ def main():
                 if elapsed_seconds <= rest:
                     timer_text = f"{elapsed_seconds:.2f}"
                     cv2.putText(frame, f"rest: {timer_text}", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-                elif elapsed_seconds <= rest + 5:
-                    cv2.putText(frame, f"Oh shit, here we go again!", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                elif elapsed_seconds <= rest + 4:
+                    cv2.putText(frame, f"Ready?", (10, 50), cv2.FONT_HERSHEY_SIMPLEX, 1,
+                                (51, 51, 161), 2)
+                    cv2.putText(frame, f"{int(rest + 4 - elapsed_seconds)}", (10, 80), cv2.FONT_HERSHEY_SIMPLEX, 1,
                                 (51, 51, 161), 2)
                 else:
+                    shit_sound.play()
                     start_time = None
 
             # Show the current frame on the screen
