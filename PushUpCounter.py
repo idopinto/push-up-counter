@@ -10,10 +10,15 @@ import pygame as pygame
 mp_drawing = mp.solutions.drawing_utils
 mp_pose = mp.solutions.pose
 
-file_name = 'Videos/pushups2.mp4'
+# file_name = 'Videos/pushups2.mp4'
 # cap = cv2.VideoCapture(0)
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW) #captureDevice = camera
-
+# cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)  # captureDevice = camera
+cap_type = int(input("0 -> Live Stream\n1 -> Video\n"))
+if cap_type == 0:
+    cap = cv2.VideoCapture(0)  # captureDevice = camera
+else:
+    file_name = input("Enter filename (with ext.)\n")
+    cap = cv2.VideoCapture(f"Videos\{file_name}")  # captureDevice = camera
 
 # Initialize Pygame mixer for audio playback
 pygame.mixer.init()
@@ -21,9 +26,7 @@ pygame.mixer.init()
 rep_sound = pygame.mixer.Sound('Assets/ping.mp3')
 set_sound = pygame.mixer.Sound('Assets/nice_sound.mp3')
 shit_sound = pygame.mixer.Sound('Assets/shit_sound.mp3')
-# end_sound = pygame.mixer.Sound('light_sound.mp3')
-# Start playing the audio
-# pygame.mixer.music.play()
+
 # Meta.
 fps = int(cap.get(cv2.CAP_PROP_FPS))
 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -33,9 +36,10 @@ fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
 # Video writer.
 video_output = cv2.VideoWriter('out/output.mp4', fourcc, fps, frame_size)
+exercise = None
 pu_counter = 0
 set_counter = 0
-form = "UP"
+form = None
 rest = 30
 sets = 3
 reps = 5
@@ -48,6 +52,57 @@ def normalized_to_pixel_coords(normalized_coord, shape):
     return x_px, y_px
 
 
+def count_push_ups(lm, frame_shape, pu_counter, form):
+    lmPose = mp_pose.PoseLandmark
+    # get the x,y coordinates of the shoulders and elbows
+    l_shldr_x, l_shldr_y = normalized_to_pixel_coords(lm.landmark[lmPose.LEFT_SHOULDER], frame_shape)
+    r_shldr_x, r_shldr_y = normalized_to_pixel_coords(lm.landmark[lmPose.RIGHT_SHOULDER], frame_shape)
+    l_elbow_x, l_elbow_y = normalized_to_pixel_coords(lm.landmark[lmPose.LEFT_ELBOW], frame_shape)
+    r_elbow_x, r_elbow_y = normalized_to_pixel_coords(lm.landmark[lmPose.RIGHT_ELBOW], frame_shape)
+
+    # check 'UP' mode to ensure we count the rep once
+    # and that the shoulders are between and beneath the elbows to ensure good rep
+    if form == "UP" and l_shldr_x <= l_elbow_x and l_shldr_y > l_elbow_y \
+            and r_elbow_x <= r_shldr_x and r_shldr_y > r_elbow_y:
+        pu_counter += 1
+        form = "DOWN"
+        rep_sound.play()
+
+    # Check 'DOWN' mode and that the shoulders
+    # are between and above the elbows so we can prepare for a new rep
+    if form == "DOWN" and l_shldr_x <= l_elbow_x and l_shldr_y < l_elbow_y \
+            and r_elbow_x <= r_shldr_x and r_shldr_y < r_elbow_y:
+        form = "UP"
+    return pu_counter, form
+
+
+def count_pull_ups(lm, frame_shape, pu_counter, form):
+    lmPose = mp_pose.PoseLandmark
+    # get the x,y coordinates of the shoulders and elbows
+    l_shldr_x, l_shldr_y = normalized_to_pixel_coords(lm.landmark[lmPose.LEFT_SHOULDER], frame_shape)
+    r_shldr_x, r_shldr_y = normalized_to_pixel_coords(lm.landmark[lmPose.RIGHT_SHOULDER], frame_shape)
+    l_elbow_x, l_elbow_y = normalized_to_pixel_coords(lm.landmark[lmPose.LEFT_ELBOW], frame_shape)
+    r_elbow_x, r_elbow_y = normalized_to_pixel_coords(lm.landmark[lmPose.RIGHT_ELBOW], frame_shape)
+    print(f"shoulder coords:\n"
+          f"\t left: {l_shldr_x}, {l_shldr_y}\n"
+          f"\t right: {r_shldr_x}, {r_shldr_y}\n")
+    print(f"elbow coords:\n"
+          f"\t left: {l_elbow_x}, {l_elbow_y}\n"
+          f"\t right: {r_elbow_x}, {r_elbow_y}\n")
+    print(form)
+    # check 'UP' mode to ensure we count the rep once
+    # and that the shoulders are between and beneath the elbows to ensure good rep
+    if form == "DOWN" and l_shldr_y + 60 < l_elbow_y and r_shldr_y + 60 < r_elbow_y:
+        pu_counter += 1
+        rep_sound.play()
+        form = "UP"
+    # Check 'DOWN' mode and that the shoulders
+    # are between and above the elbows so we can prepare for a new rep
+    if form == "UP" and l_shldr_y > l_elbow_y + 60 and r_shldr_y > r_elbow_y + 60:
+        form = "DOWN"
+    return pu_counter, form
+
+
 def main():
     # Global Variables
     global pu_counter
@@ -56,8 +111,12 @@ def main():
     global rest
     global sets
     global start_time
+    global exercise
 
     # Get input from the user ( reps X sets, rest duration)
+    exercise = int(input("choose exercise:\n"
+                         "\t 1 -> push-ups\n"
+                         "\t 2 -> pull-ups\n"))
     reps, sets = map(int,
                      input("How many sets and reps would you like to do? write in REPSXSETS format.\n").split(sep='X'))
     rest = int(input("Enter rest duration in seconds.\n"))
@@ -79,26 +138,14 @@ def main():
 
             # check if there are any landmarks and that the timer is off -> start push-ups set
             if lm and start_time is None:
-                lmPose = mp_pose.PoseLandmark
-                # get the x,y coordinates of the shoulders and elbows
-                l_shldr_x, l_shldr_y = normalized_to_pixel_coords(lm.landmark[lmPose.LEFT_SHOULDER], shape)
-                r_shldr_x, r_shldr_y = normalized_to_pixel_coords(lm.landmark[lmPose.RIGHT_SHOULDER], shape)
-                l_elbow_x, l_elbow_y = normalized_to_pixel_coords(lm.landmark[lmPose.LEFT_ELBOW], shape)
-                r_elbow_x, r_elbow_y = normalized_to_pixel_coords(lm.landmark[lmPose.RIGHT_ELBOW], shape)
-
-                # check 'UP' mode to ensure we count the rep once
-                # and that the shoulders are between and beneath the elbows to ensure good rep
-                if form == "UP" and l_shldr_x <= l_elbow_x and l_shldr_y > l_elbow_y \
-                        and r_elbow_x <= r_shldr_x and r_shldr_y > r_elbow_y:
-                    pu_counter += 1
-                    form = "DOWN"
-                    rep_sound.play()
-
-                # Check 'DOWN' mode and that the shoulders
-                # are between and above the elbows so we can prepare for a new rep
-                if form == "DOWN" and l_shldr_x <= l_elbow_x and l_shldr_y < l_elbow_y \
-                        and r_elbow_x <= r_shldr_x and r_shldr_y < r_elbow_y:
-                    form = "UP"
+                if exercise == 1:
+                    if not form:
+                        form = "UP"
+                    pu_counter, form = count_push_ups(lm, shape, pu_counter, form)
+                if exercise == 2:
+                    if not form:
+                        form = "DOWN"
+                    pu_counter, form = count_pull_ups(lm, shape, pu_counter, form)
 
                 # Draw the 33 pose landmarks found
                 mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
@@ -151,7 +198,7 @@ def main():
                     start_time = None
 
             # Show the current frame on the screen
-            cv2.imshow('Push-Up Tracker', frame)
+            cv2.imshow('Tracker', frame)
 
             # Handle Keyboard input
             key = cv2.waitKey(10) & 0xFF
@@ -160,7 +207,7 @@ def main():
                 pu_counter = 0
                 set_counter = 0
             # Quit - 'q'
-            if cv2.waitKey(10) & 0xFF == ord('q'):
+            if key & 0xFF == ord('q'):
                 break
     cv2.destroyAllWindows()
     cap.release()
